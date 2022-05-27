@@ -17,14 +17,16 @@
 			"CMAKE_BUILD_TYPE": "Release",
 			"MNN_BUILD_SHARED_LIBS": "OFF",
 			"MNN_PORTABLE_BUILD": "ON",
+			"MNN_SEP_BUILD": "OFF",
 			"MNN_CUDA": "OFF",
 			"MNN_VULKAN":"ON",
 			"MNN_BUILD_CONVERTER": "ON",
 			"MNN_WIN_RUNTIME_MT": "ON",
 			"MNN_BUILD_TRAIN": "ON",
+			"MNN_IMGCODECS" : "ON",
+			"MNN_AVX512" : "ON",
 			"MNN_TRAIN_TOOLS": "ON",
-			"MNN_USE_SSE": "ON",
-			"MNN_USE_SYSTEM_LIB": "ON",
+			//"MNN_USE_SYSTEM_LIB": "ON",
  		},
 
 		"files.associations": {
