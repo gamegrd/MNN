@@ -6,6 +6,7 @@
 	],
 	// VULKAN_SDK 
 	"settings": {
+		"cmake.generator" : "Ninja",
 		"cmake.configureSettings": {
 			// "CMAKE_INSTALL_PREFIX": "${env:VCPKG_ROOT}\\installed\\x64-windows-static\\include",
 			"CMAKE_TOOLCHAIN_FILE": "${env:VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake",
