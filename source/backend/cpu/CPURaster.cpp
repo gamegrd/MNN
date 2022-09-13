@@ -35,6 +35,15 @@ static void getBatchChannelArea(const Tensor* t, int& batch, int& channel, int& 
             channel = t->length(1);
             area    = t->length(2);
         }
+    } else if (t->dimensions() == 5) {
+        auto format = TensorUtils::getDescribe(t)->dimensionFormat;
+        if (format == MNN_DATA_FORMAT_NHWC) {
+            channel = t->length(4);
+            area    = t->length(1) * t->length(2) * t->length(3);
+        } else {
+            channel = t->length(1);
+            area    = t->length(2) * t->length(3) * t->length(4);
+        }
     } else {
         auto format = TensorUtils::getDescribe(t)->dimensionFormat;
         if (format == MNN_DATA_FORMAT_NHWC) {
@@ -715,7 +724,6 @@ public:
                 auto view0 = cmd->view()->GetAs<View>(0);
                 auto view1 = cmd->view()->GetAs<View>(1);
                 if (cmd->fuse() >= 0) {
-                    mNeedZero = true;
                     if (view1->stride()->data()[2] != 1 || view0->stride()->data()[2] != 1) {
                         mMaxCacheSize = std::max(mMaxCacheSize, cmd->size()->data()[2] * bytes);
                     }
@@ -805,9 +813,31 @@ public:
     }
 
     virtual ErrorCode onExecute(const std::vector<Tensor *> &originInputs, const std::vector<Tensor *> &originOutputs) override {
-        auto precision = static_cast<CPUBackend*>(backend())->precisionMode();
-        auto threadNumber = static_cast<CPUBackend*>(backend())->threadNumber();
-
+        auto cpubackend = static_cast<CPUBackend*>(backend());
+        auto precision = cpubackend->precisionMode();
+        auto threadNumber = cpubackend->threadNumber();
+        if (mLoop->initCommand() != nullptr) {
+            auto cmd = mLoop->initCommand();
+            if (cmd->op() == nullptr) {
+                ::memset(originOutputs[0]->host<void>(), 0, cpubackend->getTensorSize(originOutputs[0]) * cpubackend->functions()->bytes);
+            } else {
+                Tensor::InsideDescribe::Region reg;
+                auto srcView = cmd->view()->GetAs<View>(1);
+                auto dstView = cmd->view()->GetAs<View>(0);
+                ::memcpy(reg.size, cmd->size()->data(), 3 * sizeof(int32_t));
+                ::memcpy(reg.src.stride, srcView->stride()->data(), 3 * sizeof(int32_t));
+                ::memcpy(reg.dst.stride, dstView->stride()->data(), 3 * sizeof(int32_t));
+                auto input = mStack[cmd->indexes()->data()[1]];
+                auto inputSize = input->elementSize();
+                auto output = mStack[cmd->indexes()->data()[0]];
+                auto bytes = input->getType().bytes();
+                if (halide_type_float == input->getType().code) {
+                    bytes = cpubackend->functions()->bytes;
+                }
+                auto proc = _selectUnitProc(bytes);
+                _blit(reg, bytes, input->host<uint8_t>(), output->host<uint8_t>(), proc);
+            }
+        }
         if (1 == mLoop->commands()->size()) {
             auto cmd = mLoop->commands()->GetAs<RegionCommand>(0);
             auto op = cmd->op();
@@ -858,10 +888,6 @@ public:
                 }
                 return NO_ERROR;
             }
-        }
-        // fuse mean reduce, need zero dst
-        if (mNeedZero) {
-            memset(originOutputs[0]->host<void>(), 0, originOutputs[0]->size());
         }
         auto bytes = static_cast<CPUBackend*>(backend())->functions()->bytes;
         auto func = [&](int iter, int tId) {
@@ -1046,7 +1072,6 @@ private:
     std::vector<ThreadContainer> mContainer;
     uint8_t* mCacheBuffer = nullptr;
     int mMaxCacheSize = 0;
-    bool mNeedZero = false;
 };
 
 class CPURasterFactory : public CPUBackend::Creator {

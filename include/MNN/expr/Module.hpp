@@ -17,8 +17,6 @@
 #include <MNN/MNNForwardType.h>
 
 namespace MNN {
-class PythonAuthByPass;
-
 namespace Express {
 struct SubGraph;
 class MNN_PUBLIC Module {
@@ -81,10 +79,17 @@ public:
 
     struct Info {
         // Input info load from model
-        // If the ith input has no info, it will be nullptr
         std::vector<Variable::Info> inputs;
+        // The Module's defaultFormat, NCHW or NHWC
         Dimensionformat defaultFormat;
+        // Runtime Info
         std::shared_ptr<MNN::Express::Executor::RuntimeManager> runTimeManager;
+        // Input Names By Order
+        std::vector<std::string> inputNames;
+        // Output Names By Order
+        std::vector<std::string> outputNames;
+        // The MNNConvert's Version build the module
+        std::string version;
     };
     const Info* getInfo() const;
     class CloneContext {
@@ -110,6 +115,7 @@ public:
     }
     void registerModel(const std::vector<std::shared_ptr<Module>>& children);
 
+    static void destroy(Module* m);
 protected:
     virtual void onClearCache() {
     }
@@ -118,14 +124,11 @@ protected:
 
 private:
     void _collectParameters(std::vector<Express::VARP>& result) const;
-    static Module* loadWithoutAuth(const std::vector<std::string>& inputs, const std::vector<std::string>& outputs, const char* fileName, const std::shared_ptr<MNN::Express::Executor::RuntimeManager> rtMgr, const Module::Config* config);
     std::vector<std::shared_ptr<Module>> mChildren;
     std::vector<Express::VARP> mParameters;
     bool mIsTraining = true;
     std::string mName;
     std::string mType;
-
-    friend class MNN::PythonAuthByPass;
 };
 
 struct SubGraph {

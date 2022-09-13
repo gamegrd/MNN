@@ -112,7 +112,7 @@ ErrorCode Arm82Interp::onResize(const std::vector<Tensor*>& inputs, const std::v
 
     mWidthFactor.buffer().dim[0].extent = ow;
     mWidthFactor.buffer().dimensions    = 1;
-    mWidthFactor.setType(DataType_DT_FLOAT);
+    mWidthFactor.setType(DataType_DT_INT32);
     backend()->onAcquireBuffer(&mWidthFactor, Backend::STATIC);
 
     auto _wPositionPtr = mWidthPosition.host<int>();
@@ -135,7 +135,7 @@ ErrorCode Arm82Interp::onResize(const std::vector<Tensor*>& inputs, const std::v
 
     mHeightFactor.buffer().dim[0].extent = oh;
     mHeightFactor.buffer().dimensions    = 1;
-    mHeightFactor.setType(DataType_DT_FLOAT);
+    mHeightFactor.setType(DataType_DT_INT32);
     backend()->onAcquireBuffer(&mHeightFactor, Backend::STATIC);
 
     auto _hPositionPtr = mHeightPosition.host<int>();
@@ -173,8 +173,8 @@ ErrorCode Arm82Interp::onExecute(const std::vector<Tensor*>& inputs, const std::
     const int oh                  = output->height();
     const int inputBatchStride    = iw * ih * ARMV82_CHANNEL_UNIT;
     const int outputBatchStride   = ow * oh * ARMV82_CHANNEL_UNIT;
-    const int inputChannelStride  = iw * ih;
-    const int outputChannelStride = ow * oh;
+    const int inputChannelStride  = iw * ih * batches;
+    const int outputChannelStride = ow * oh * batches;
     const int channelDivUnit      = UP_DIV(input->channel(), ARMV82_CHANNEL_UNIT);
 
     if (mResizeType == 1) {

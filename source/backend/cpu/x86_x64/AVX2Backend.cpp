@@ -113,8 +113,8 @@ static void _CopyC4ToC16_int8(float* dstO, const float* srcO, int channelC4, int
             for (int v=cR; v<4; ++v) {
                 d[v] = 0;
             }
-            s0 += 4;
-            d += 16;
+            s0 ++;
+            d += 4;
         }
     }
 }
@@ -343,6 +343,8 @@ Backend::MemObj* AVX2Backend::onAcquire(const Tensor* nativeTensor, StorageType 
     auto tensor = const_cast<Tensor*>(nativeTensor);
     auto& buffer = tensor->buffer();
     auto tensorSize = getTensorSize(nativeTensor, true);
+    // MNN_PRINT("acquire tensor:%p, tensorSize:%d, shape: ", nativeTensor, tensorSize);
+    // nativeTensor->printShape();
     auto res = allocBuffer(tensorSize, (Tensor*)nativeTensor, storageType);
     if (!res) {
         return nullptr;

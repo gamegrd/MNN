@@ -16,7 +16,7 @@ PyObject* toPyObj(std::vector<CV::Point> _points);
 bool isMatrix(PyObject* obj);
 CV::Matrix toMatrix(PyObject* obj);
 PyObject* toPyObj(CV::Matrix m);
-#ifdef PYMNN_IMGCODECS
+#if defined(PYMNN_IMGCODECS) || (!defined(PYMNN_USE_ALINNPYTHON))
 static PyObject* PyMNNCV_haveImageReader(PyObject *self, PyObject *args) {
     const char *filename = NULL;
     if (PyArg_ParseTuple(args, "s", &filename) && filename) {
@@ -45,9 +45,9 @@ static PyObject* PyMNNCV_imdecode(PyObject *self, PyObject *args) {
 static PyObject* PyMNNCV_imencode(PyObject *self, PyObject *args) {
     const char *ext = NULL;
     INTS default_param = {};
-    PyObject *img, *params = toPyObj(default_param);
-    if (PyArg_ParseTuple(args, "sO|O", &ext, &img, &params) && isVar(img) && isInts(params)) {
-        return toPyObj<bool, toPyObj, std::vector<uint8_t>, toPyObj>(CV::imencode(ext, toVar(img), toInts(params)));
+    PyObject *img, *params = nullptr /* default_param */;
+    if (PyArg_ParseTuple(args, "sO|O", &ext, &img, &params) && isVar(img) && (params == nullptr || isInts(params))) {
+        return toPyObj<bool, toPyObj, std::vector<uint8_t>, toPyObj>(CV::imencode(ext, toVar(img), PARSE(params, default_param, toInts)));
     }
     PyMNN_ERROR("imencode require args: (string, Var, |[int])");
 }
@@ -62,16 +62,35 @@ static PyObject* PyMNNCV_imread(PyObject *self, PyObject *args) {
 static PyObject* PyMNNCV_imwrite(PyObject *self, PyObject *args) {
     const char *filename = NULL;
     INTS default_param = {};
-    PyObject *img, *params = toPyObj(default_param);
+    PyObject *img, *params = nullptr /* default_param */;
     if (PyArg_ParseTuple(args, "sO|O", &filename, &img, &params) &&
-        filename && isVar(img) && isInts(params)) {
-        return toPyObj(CV::imwrite(filename, toVar(img), toInts(params)));
+        filename && isVar(img) && (params == nullptr || isInts(params))) {
+        return toPyObj(CV::imwrite(filename, toVar(img), PARSE(params, default_param, toInts)));
     }
     PyMNN_ERROR("imwrite require args: (string, Var, |[int])");
 }
 #endif
+#if defined(PYMNN_CALIB3D) || (!defined(PYMNN_USE_ALINNPYTHON))
+static PyObject* PyMNNCV_Rodrigues(PyObject *self, PyObject *args) {
+    PyObject *src;
+    if (PyArg_ParseTuple(args, "O", &src) && isVar(src)) {
+        return toPyObj(CV::Rodrigues(toVar(src)));
+    }
+    PyMNN_ERROR("Rodrigues require args: (Var)");
+}
+static PyObject* PyMNNCV_solvePnP(PyObject *self, PyObject *args) {
+    int useExtrinsicGuess = 0;
+    PyObject *objPoints, *imgPoints, *cameraMatrix, *distCoeffs;
+    if (PyArg_ParseTuple(args, "OOOO|i", &objPoints, &imgPoints, &cameraMatrix, &distCoeffs, &useExtrinsicGuess) &&
+        isVar(objPoints) && isVar(imgPoints) && isVar(cameraMatrix) && isVar(distCoeffs)) {
+        return toPyObj<VARP, toPyObj, VARP, toPyObj>(CV::solvePnP(toVar(objPoints), toVar(imgPoints), toVar(cameraMatrix),
+                                    toVar(distCoeffs), useExtrinsicGuess));
+    }
+    PyMNN_ERROR("solvePnP require args: (Var, Var, Var, Var, |bool)");
+}
+#endif
 // color
-#ifdef PYMNN_IMGPROC_COLOR
+#if defined(PYMNN_IMGPROC_COLOR) || (!defined(PYMNN_USE_ALINNPYTHON))
 static PyObject* PyMNNCV_cvtColor(PyObject *self, PyObject *args) {
     PyObject *src;
     int code, dstCn = 0;
@@ -91,7 +110,7 @@ static PyObject* PyMNNCV_cvtColorTwoPlane(PyObject *self, PyObject *args) {
 }
 #endif
 // filter
-#ifdef PYMNN_IMGPROC_FILTER
+#if defined(PYMNN_IMGPROC_FILTER) || (!defined(PYMNN_USE_ALINNPYTHON))
 static PyObject* PyMNNCV_blur(PyObject *self, PyObject *args) {
     PyObject *src, *ksize;
     int borderType = 1;
@@ -188,21 +207,25 @@ static PyObject* PyMNNCV_Laplacian(PyObject *self, PyObject *args) {
 }
 static PyObject* PyMNNCV_pyrDown(PyObject *self, PyObject *args) {
     INTS default_size = {0, 0};
-    PyObject *src, *dstsize = toPyObj(default_size);
+    PyObject *src, *dstsize = nullptr /* default_size */;
     int borderType = 1;
     if (PyArg_ParseTuple(args, "O|Oi", &src, &dstsize, &borderType) &&
-        isVar(src) && isSize(dstsize))  {
-        return toPyObj(CV::pyrDown(toVar(src), toSize(dstsize), borderType));
+        isVar(src) && (dstsize == nullptr || isSize(dstsize)))  {
+        return toPyObj(CV::pyrDown(toVar(src),
+                PARSE(dstsize, CV::Size(default_size[0], default_size[1]), toSize),
+                borderType));
     }
     PyMNN_ERROR("pyrDown require args: (Var, |[int], BorderTypes)");
 }
 static PyObject* PyMNNCV_pyrUp(PyObject *self, PyObject *args) {
     INTS default_size = {0, 0};
-    PyObject *src, *dstsize = toPyObj(default_size);
+    PyObject *src, *dstsize = nullptr /* default_size */;
     int borderType = 1;
     if (PyArg_ParseTuple(args, "O|Oi", &src, &dstsize, &borderType) &&
-        isVar(src) && isSize(dstsize))  {
-        return toPyObj(CV::pyrUp(toVar(src), toSize(dstsize)));
+        isVar(src) && (dstsize == nullptr || isSize(dstsize)))  {
+        return toPyObj(CV::pyrUp(toVar(src),
+                PARSE(dstsize, CV::Size(default_size[0], default_size[1]), toSize),
+                borderType));
     }
     PyMNN_ERROR("pyrUp require args: (Var, |[int], BorderTypes)");
 }
@@ -262,7 +285,7 @@ static PyObject* PyMNNCV_sqrBoxFilter(PyObject *self, PyObject *args) {
 }
 #endif
 // geometric
-#ifdef PYMNN_IMGPROC_GEOMETRIC
+#if defined(PYMNN_IMGPROC_GEOMETRIC) || (!defined(PYMNN_USE_ALINNPYTHON))
 static PyObject* PyMNNCV_getAffineTransform(PyObject *self, PyObject *args) {
     PyObject *src, *dst;
     if (PyArg_ParseTuple(args, "OO", &src, &dst) && isPoints(src) && isPoints(dst)) {
@@ -302,23 +325,31 @@ static PyObject* PyMNNCV_invertAffineTransform(PyObject *self, PyObject *args) {
 }
 static PyObject* PyMNNCV_resize(PyObject *self, PyObject *args) {
     std::vector<float> default_floats = {};
-    PyObject *src, *dsize, *mean = toPyObj(default_floats), *norm = toPyObj(default_floats);
+    PyObject *src, *dsize, *mean = nullptr /* default_floats */, *norm = nullptr /* default_floats */;
     float fx = 0, fy = 0;
     int code = -1, interpolation = CV::INTER_LINEAR;
     if (PyArg_ParseTuple(args, "OO|ffiiOO", &src, &dsize, &fx, &fy, &interpolation, &code, &mean, &norm) &&
-        isVar(src) && isSize(dsize) && isFloats(mean) && isFloats(norm)) {
-        return toPyObj(CV::resize(toVar(src), toSize(dsize), fx, fy, interpolation, code, toFloats(mean), toFloats(norm)));
+        isVar(src) && isSize(dsize)
+        && (mean == nullptr || isFloats(mean))
+        && (norm == nullptr || isFloats(norm))) {
+        return toPyObj(CV::resize(toVar(src), toSize(dsize), fx, fy, interpolation, code,
+                    PARSE(mean, default_floats, toFloats),
+                    PARSE(norm, default_floats, toFloats)));
     }
     PyMNN_ERROR("resize require args: (Var, [int], |float, float, InterpolationFlags, int, [float], [float])");
 }
 static PyObject* PyMNNCV_warpAffine(PyObject *self, PyObject *args) {
     std::vector<float> default_floats = {};
-    PyObject *src, *M, *dsize, *mean = toPyObj(default_floats), *norm = toPyObj(default_floats);
+    PyObject *src, *M, *dsize, *mean = nullptr /* default_floats */, *norm = nullptr /* default_floats */;
     int borderValue = 0, code = -1, flag = CV::INTER_LINEAR, borderMode = CV::BORDER_CONSTANT;
     if (PyArg_ParseTuple(args, "OOO|iiiiOO", &src, &M, &dsize, &flag, &borderMode, &borderValue, &code, &mean, &norm) &&
-        isVar(src) && isMatrix(M) && isSize(dsize) && isFloats(mean) && isFloats(norm)) {
+        isVar(src) && isMatrix(M) && isSize(dsize)
+        && (mean == nullptr || isFloats(mean))
+        && (norm == nullptr || isFloats(norm))) {
         return toPyObj(CV::warpAffine(toVar(src), toMatrix(M), toSize(dsize),
-                       flag, borderMode, borderValue, code, toFloats(mean), toFloats(norm)));
+                       flag, borderMode, borderValue, code,
+                                PARSE(mean, default_floats, toFloats),
+                                PARSE(norm, default_floats, toFloats)));
     }
     PyMNN_ERROR("warpAffine require args: (Var, Matrix, [int], |InterpolationFlags, BorderTypes, int, int, [float], [float])");
 }
@@ -334,7 +365,7 @@ static PyObject* PyMNNCV_warpPerspective(PyObject *self, PyObject *args) {
 }
 #endif
 // miscellaneous
-#ifdef PYMNN_IMGPROC_MISCELLANEOUS
+#if defined(PYMNN_IMGPROC_MISCELLANEOUS) || (!defined(PYMNN_USE_ALINNPYTHON))
 static PyObject* PyMNNCV_blendLinear(PyObject *self, PyObject *args) {
     PyObject *src1, *src2, *weight1, *weight2;
     if (PyArg_ParseTuple(args, "OOOO", &src1, &src2, &weight1, &weight2) &&
@@ -353,13 +384,20 @@ static PyObject* PyMNNCV_threshold(PyObject *self, PyObject *args) {
 }
 #endif
 // structural
-#ifdef PYMNN_IMGPROC_STRUCTURAL
+#if defined(PYMNN_IMGPROC_STRUCTURAL) || (!defined(PYMNN_USE_ALINNPYTHON))
 static PyObject* PyMNNCV_findContours(PyObject *self, PyObject *args) {
-    PyObject *image, *offset = toPyObj(std::vector<float>{0, 0});
+    PyObject *image, *offset = nullptr /* {0, 0} */;
     int mode, method;
     if (PyArg_ParseTuple(args, "Oii|O", &image, &mode, &method, &offset) &&
-        isVar(image) && isPoint(offset)) {
-        auto contours = CV::findContours(toVar(image), mode, method, toPoint(offset));
+        isVar(image)
+        && (offset == nullptr || isPoint(offset))) {
+        CV::Point point;
+        if (offset == nullptr) {
+            point.set(0.f, 0.f);
+        } else {
+            point = toPoint(offset);
+        }
+        auto contours = CV::findContours(toVar(image), mode, method, point);
         PyObject* obj = PyTuple_New(2);
         PyTuple_SetItem(obj, 0, toPyObj<VARP, toPyObj>(contours));
         PyTuple_SetItem(obj, 1, toPyObj("no hierarchy"));
@@ -453,7 +491,7 @@ error_:
 }
 #endif
 // draw
-#ifdef PYMNN_IMGPROC_DRAW
+#if defined(PYMNN_IMGPROC_DRAW) || (!defined(PYMNN_USE_ALINNPYTHON))
 static bool isColor(PyObject* obj) {
     return isInts(obj) || isFloats(obj);
 }
@@ -546,20 +584,39 @@ static PyObject* PyMNNCV_drawContours(PyObject *self, PyObject *args) {
     PyMNN_ERROR("drawContours require args: (Var, [Points], int, Color, |int, LineType)");
 }
 static PyObject* PyMNNCV_fillPoly(PyObject *self, PyObject *args) {
-    PyObject *img, *contours, *color, *offset = toPyObj(std::vector<float>{0, 0});
+    PyObject *img, *contours, *color, *offset = nullptr /* {0, 0} */;
     int shift = 0, linetype = CV::LINE_8;
     if (PyArg_ParseTuple(args, "OOO|OiO", &img, &contours, &color, &linetype, &shift, &offset)
-        && isVar(img) && (isVec<isPoints>(contours) || isPoints(contours)) && isColor(color) && isPoint(offset)) {
+        && isVar(img) && (isVec<isPoints>(contours) || isPoints(contours)) && isColor(color)
+        && (offset == nullptr || isPoint(offset))) {
         auto image = toVar(img);
-        CV::fillPoly(image, toVec<std::vector<CV::Point>, toPoints>(contours), toColor(color),
-                     linetype, shift, toPoint(offset));
+        CV::Point point;
+        if (offset == nullptr) {
+            point.set(0.f, 0.f);
+        } else {
+            point = toPoint(offset);
+        }
+        CV::fillPoly(image, toVec<std::vector<CV::Point>, toPoints>(contours), toColor(color), linetype, shift, point);
         Py_RETURN_NONE;
     }
     PyMNN_ERROR("fillPoly require args: (Var, [Points], Color, |LineType, int, Point)");
 }
 #endif
+#if defined(PYMNN_IMGPROC_HISTOGRAMS) || (!defined(PYMNN_USE_ALINNPYTHON))
+static PyObject* PyMNNCV_calcHist(PyObject *self, PyObject *args) {
+    PyObject *imgs, *channels, *mask, *histSize, *ranges;
+    int accumulate = 0;
+    if (PyArg_ParseTuple(args, "OOOOO|i", &imgs, &channels, &mask, &histSize, &ranges, &accumulate)
+        && isVars(imgs) && isInts(channels) && (isVar(mask) || isNone(mask)) && isInts(histSize) && isFloats(ranges)) {
+        VARP maskVar;
+        if (!isNone(mask)) { maskVar = toVar(mask); }
+        return toPyObj(CV::calcHist(toVars(imgs), toInts(channels), maskVar, toInts(histSize), toFloats(ranges), accumulate));
+    }
+    PyMNN_ERROR("calcHist require args: ([Var], [int], (Var|None), [int], [float], |bool)");
+}
+#endif
 static PyMethodDef PyMNNCV_methods[] = {
-#ifdef PYMNN_IMGCODECS
+#if defined(PYMNN_IMGCODECS) || (!defined(PYMNN_USE_ALINNPYTHON))
     // imgcodecs
     register_methods(CV,
         haveImageReader, "haveImageReader",
@@ -570,14 +627,21 @@ static PyMethodDef PyMNNCV_methods[] = {
         imwrite, "imwrite"
     )
 #endif
-#ifdef PYMNN_IMGPROC_COLOR
+#if defined(PYMNN_CALIB3D) || (!defined(PYMNN_USE_ALINNPYTHON))
+    // calib3d
+    register_methods(CV,
+        Rodrigues, "Rodrigues",
+        solvePnP, "solvePnP"
+    )
+#endif
+#if defined(PYMNN_IMGPROC_COLOR) || (!defined(PYMNN_USE_ALINNPYTHON))
     // color
     register_methods(CV,
         cvtColor, "cvtColor.",
         cvtColorTwoPlane, "cvtColorTwoPlane."
     )
 #endif
-#ifdef PYMNN_IMGPROC_FILTER
+#if defined(PYMNN_IMGPROC_FILTER) || (!defined(PYMNN_USE_ALINNPYTHON))
     // filter
     register_methods(CV,
         blur, "blur",
@@ -599,7 +663,7 @@ static PyMethodDef PyMNNCV_methods[] = {
         sqrBoxFilter, "sqrBoxFilter"
     )
 #endif
-#ifdef PYMNN_IMGPROC_GEOMETRIC
+#if defined(PYMNN_IMGPROC_GEOMETRIC) || (!defined(PYMNN_USE_ALINNPYTHON))
     // geometric
     register_methods(CV,
         getAffineTransform, "getAffineTransform",
@@ -612,14 +676,14 @@ static PyMethodDef PyMNNCV_methods[] = {
         warpPerspective, "warpPerspective"
     )
 #endif
-#ifdef PYMNN_IMGPROC_MISCELLANEOUS
+#if defined(PYMNN_IMGPROC_MISCELLANEOUS) || (!defined(PYMNN_USE_ALINNPYTHON))
     // miscellaneous
     register_methods(CV,
         blendLinear, "blendLinear",
         threshold, "threshold"
     )
 #endif
-#ifdef PYMNN_IMGPROC_STRUCTURAL
+#if defined(PYMNN_IMGPROC_STRUCTURAL) || (!defined(PYMNN_USE_ALINNPYTHON))
     // structural
     register_methods(CV,
         findContours, "findContours",
@@ -631,7 +695,7 @@ static PyMethodDef PyMNNCV_methods[] = {
         boxPoints, "boxPoints"
     )
 #endif
-#ifdef PYMNN_IMGPROC_DRAW
+#if defined(PYMNN_IMGPROC_DRAW) || (!defined(PYMNN_USE_ALINNPYTHON))
     // draw
     register_methods(CV,
         line, "line",
@@ -640,6 +704,11 @@ static PyMethodDef PyMNNCV_methods[] = {
         rectangle, "rectangle",
         drawContours, "drawContours",
         fillPoly, "fillPoly"
+    )
+#endif
+#if defined(PYMNN_IMGPROC_HISTOGRAMS) || (!defined(PYMNN_USE_ALINNPYTHON))
+    register_methods(CV,
+        calcHist, "calcHist"
     )
 #endif
 };

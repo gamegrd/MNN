@@ -96,6 +96,12 @@ typedef std::function<bool(const std::vector<Tensor*>&, const std::string& /*opN
 typedef std::function<bool(const std::vector<Tensor*>&, const OperatorInfo*)> TensorCallBackWithInfo;
 typedef std::pair<std::map<MNNForwardType, std::shared_ptr<Runtime>>, std::shared_ptr<Runtime>> RuntimeInfo;
 
+/**
+ * @brief get mnn version info.
+ * @return mnn version string.
+ */
+MNN_PUBLIC const char* getVersion();
+
 /** net data holder. multiple sessions could share same net. */
 class MNN_PUBLIC Interpreter {
 public:
@@ -113,6 +119,12 @@ public:
      */
     static Interpreter* createFromBuffer(const void* buffer, size_t size);
     ~Interpreter();
+    
+    /**
+     * @brief destroy Interpreter
+     * @param model    given Interpreter to release.
+     */
+    static void destroy(Interpreter* net);
 
     enum SessionMode {
         /** About CallBack, Default Session_Debug*/
@@ -225,6 +237,15 @@ public:
     void resizeSession(Session* session);
 
     /**
+     * @brief call this function to get tensors ready. output tensor buffer (host or deviceId) should be retrieved
+     *        after resize of any input tensor.
+     * @param session given session.
+     * @param needRelloc, 1 means need realloc.
+     */
+    void resizeSession(Session* session, int needRelloc);
+
+    
+    /**
      * @brief call this function if don't need resize or create session any more, it will save a few memory that equal
      * to the size of model buffer
      */
@@ -239,6 +260,13 @@ public:
      * output.write((const char*)buffer.first, buffer.second);
      */
     std::pair<const void*, size_t> getModelBuffer() const;
+
+    /**
+     * @brief Get the model's version info.
+     * @return const char* of model's version info like "2.0.0";
+     * If model is not loaded or model no version info, return "version info not found".
+     */
+    const char* getModelVersion() const;
 
     /**
      * @brief update Session's Tensor to model's Const Op
@@ -300,6 +328,9 @@ public:
 
         /** Backends in session in M, int*, length >= 1 + number of configs when create session */
         BACKENDS = 2,
+        
+        /** Resize Info, int*, 0: ready to execute, 1: need malloc, 2: need resize */
+        RESIZE_STATUS = 3,
 
         ALL
     };
@@ -366,9 +397,6 @@ public:
 private:
     static Interpreter* createFromBufferInternal(Content* net, bool enforceAuth);
 
-    // Private method for internal use to bypass Model Auth.
-    static Interpreter* createFromFileWithoutAuth(const char* file);
-
     Content* mNet = nullptr;
     Interpreter(Content* net);
 
@@ -376,8 +404,10 @@ private:
     Interpreter(const Interpreter&&) = delete;
     Interpreter& operator=(const Interpreter&) = delete;
     Interpreter& operator=(const Interpreter&&) = delete;
-
-    friend class PythonAuthByPass;
+    void waitSessionFinish(const Session* session) const;
+#ifdef MNN_INTERNAL_ENABLED
+    void logForRunSession(const Session* session, float time, const char* api) const;
+#endif
 };
 } // namespace MNN
 

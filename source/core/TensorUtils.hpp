@@ -13,6 +13,7 @@
 #include "Backend.hpp"
 #include "AutoStorage.h"
 #include "Tensor_generated.h"
+#define MNN_MAX_TENSOR_DIM 8
 
 #ifdef CONSTANT
 #undef CONSTANT
@@ -163,6 +164,8 @@ public:
     static halide_type_t DataTypeToHalideType(DataType t);
     static DataType HaildeTypeToDataType(halide_type_t t);
     static std::vector<float> getQuantInfo(const Tensor* t);
+    
+    static size_t getRawSize(const Tensor* t);
 };
 } // namespace MNN
 

@@ -8,11 +8,15 @@
 
 #include <MNN/expr/Module.hpp>
 #include <MNN/expr/ExprCreator.hpp>
+#include <MNN/expr/ExecutorScope.hpp>
+
 #include "PipelineModule.hpp"
 #include "core/FileLoader.hpp"
 #include "MNN_generated.h"
 #include "Utils.hpp"
+#include "RuntimeAttr.hpp"
 
+#include <MNN/AutoTime.hpp>
 #ifdef MNN_INTERNAL_ENABLED
 #include "internal/auth/ModelAuth.hpp"
 #include "internal/logging/Log.hpp"
@@ -46,6 +50,11 @@ protected:
         return this->cloneBaseTo(ctx, module);
     }
 };
+void Module::destroy(Module* m) {
+    if (nullptr != m) {
+        delete m;
+    }
+}
 
 Module* Module::createEmpty(const std::vector<Express::VARP>& parameters) {
     return new EmptyModule(parameters);
@@ -135,27 +144,6 @@ Module* Module::load(const std::vector<std::string>& inputs, const std::vector<s
     return load(inputs, outputs, buffer, length, nullptr, config);
 }
 
-// Private function for friend class to load without Auth.
-Module* Module::loadWithoutAuth(const std::vector<std::string>& inputs, const std::vector<std::string>& outputs, const char* fileName, const std::shared_ptr<MNN::Express::Executor::RuntimeManager> rtMgr, const Module::Config* config) {
-    AutoStorage<uint8_t> buffer;
-    {
-        FileLoader loader(fileName);
-        if (!loader.valid()) {
-            MNN_ERROR("Error for open %s\n", fileName);
-            return nullptr;
-        }
-        loader.read();
-        if (!loader.valid()) {
-            return nullptr;
-        }
-        loader.merge(buffer);
-        if (buffer.get() == nullptr) {
-            return nullptr;
-        }
-    }
-    return loadInternal(inputs, outputs, buffer.get(), buffer.size(), rtMgr, config, false);
-}
-
 Module* Module::load(const std::vector<std::string>& inputs, const std::vector<std::string>& outputs, const char* fileName, const std::shared_ptr<MNN::Express::Executor::RuntimeManager> rtMgr, const Module::Config* config) {
     AutoStorage<uint8_t> buffer;
     {
@@ -177,19 +165,85 @@ Module* Module::load(const std::vector<std::string>& inputs, const std::vector<s
 }
 class NetModule : public Module {
 public:
-    NetModule(std::shared_ptr<Module> m, std::shared_ptr<Module::Info> info) {
+    NetModule(std::shared_ptr<Module> m, std::shared_ptr<Module::Info> info, const MNN::Net* net, size_t size, float costTime) {
         mModule = m;
         mInfo = info;
         setType("Net");
+#ifdef MNN_INTERNAL_ENABLED
+        if (nullptr != net) {
+            mLogInfo = getBasicLoggingData();
+            std::string uuid = std::string(net->mnn_uuid() ? net->mnn_uuid()->c_str() : "");
+            mLogInfo.emplace("UUID", uuid);
+            mLogInfo.emplace("ModelVersion", info->version);
+            int backend = MNN_FORWARD_CPU;
+            int precision = BackendConfig::Precision_Normal;
+            int mode = 1;
+            if (info->runTimeManager.get() != nullptr) {
+                auto attr = info->runTimeManager->getInside();
+                mode = attr->mNumberThread;
+                int backendTypes[MNN_FORWARD_ALL];
+                info->runTimeManager->getInfo(Interpreter::BACKENDS, &backendTypes);
+                backend = backendTypes[0];
+                auto config = info->runTimeManager->getBnConfig();
+                if (nullptr != config) {
+                    precision = config->precision;
+                }
+            }
+            mLogInfo.emplace("Backend",  std::to_string(backend));
+            mLogInfo.emplace("Mode",  std::to_string(mode));
+            mLogInfo.emplace("Precision", std::to_string(precision));
+            if (shouldLog(FREQ_HIGH)) {
+                std::map<std::string, std::string> metrics = mLogInfo;
+                metrics.emplace("Time", std::to_string(costTime));
+                auto sizeInMB = (float)size / 1024.0f / 1024.0f;
+                metrics.emplace("ModelSize",  std::to_string(sizeInMB));
+                metrics.emplace("API", "Express::Module::NetModule");
+                logAsync(metrics);
+            }
+        }
+#endif // MNN_INTERNAL_ENABLED
     }
     virtual ~ NetModule(){}
 
     virtual std::vector<Express::VARP> onForward(const std::vector<Express::VARP>& inputs) override {
-        return mModule->onForward(inputs);
+#ifdef MNN_INTERNAL_ENABLED
+        Timer _time;
+        auto glo = ExecutorScope::Current();
+        glo->getDebugTools()->flops = 0.0f;
+#endif
+        auto outputs = mModule->onForward(inputs);
+#ifdef MNN_INTERNAL_ENABLED
+        do {
+            if (outputs.empty()) {
+                break;
+            }
+            if (!shouldLog(FREQ_LOW)) {
+                break;
+            }
+            for (auto& v : outputs) {
+                auto t = Utils::getTensor(v);
+                t->wait(Tensor::MAP_TENSOR_READ, true);
+            }
+            auto metrics = mLogInfo;
+            metrics.emplace("Time", std::to_string((float)_time.durationInUs() / 1000.0f));
+            metrics.emplace("API", "NetModule::onForward");
+            if (mInfo->runTimeManager.get() != nullptr) {
+                float memory = 0.0f;
+                mInfo->runTimeManager->getInfo(Interpreter::MEMORY, &memory);
+                metrics.emplace("Flops", std::to_string(glo->getDebugTools()->flops));
+                metrics.emplace("Memory", std::to_string(memory));
+            }
+            logAsync(metrics);
+        } while(false);
+#endif
+        return outputs;
     }
     virtual Module* clone(CloneContext* ctx) const override {
         std::shared_ptr<Module> submodule(mModule->clone(ctx));
-        NetModule* module(new NetModule(submodule, mInfo));
+        NetModule* module(new NetModule(submodule, mInfo, nullptr, 0, 0.0f));
+#ifdef MNN_INTERNAL_ENABLED
+        module->mLogInfo = mLogInfo;
+#endif
         return this->cloneBaseTo(ctx, module);
     }
     const Module::Info* info() const {
@@ -198,6 +252,9 @@ public:
 private:
     std::shared_ptr<Module> mModule;
     std::shared_ptr<Module::Info> mInfo;
+#ifdef MNN_INTERNAL_ENABLED
+    std::map<std::string, std::string> mLogInfo;
+#endif
 };
 
 const Module::Info* Module::getInfo() const {
@@ -252,7 +309,7 @@ Module* Module::load(const std::vector<std::string>& inputs, const std::vector<s
 
 static Module* loadInternal(const std::vector<std::string>& inputs, const std::vector<std::string>& outputs, const uint8_t* buffer, size_t length, const std::shared_ptr<MNN::Express::Executor::RuntimeManager> _rtMgr, const Module::Config* config, bool enforceAuth) {
     // Check if runtime is valid
-    if (nullptr != _rtMgr && _rtMgr->getRuntimeInfo().first.empty()) {
+    if (nullptr != _rtMgr && _rtMgr->getInside()->mRuntime.first.empty()) {
         MNN_ERROR("Invalid runtime\n");
         return nullptr;
     }
@@ -262,40 +319,11 @@ static Module* loadInternal(const std::vector<std::string>& inputs, const std::v
         MNN_ERROR("Invalid net, for null oplist or tensorName\n");
         return nullptr;
     }
-
-#ifdef MNN_INTERNAL_ENABLED
-    std::string bizCode = std::string(net->bizCode() ? net->bizCode()->c_str() : "");
-    std::string uuid = std::string(net->mnn_uuid() ? net->mnn_uuid()->c_str() : "");
-
-    if (enforceAuth && !authenticateModel(net)) {
-        MNN_ERROR("Model authentication failed.\n");
-
-        std::map<std::string, std::string> metrics;
-        metrics.emplace("Model_UUID", uuid);
-        metrics.emplace("Model_BizCode", bizCode);
-        metrics.emplace("Event", "AUTH_FAILURE");
-        metrics.emplace("Backend", config && config->backend ? std::to_string(config->backend->type) : std::to_string(MNN_FORWARD_CPU));
-        metrics.emplace("Precision", config && config->backend && config->backend->config ? std::to_string(config->backend->config->precision) : std::to_string(BackendConfig::Precision_Normal));
-        metrics.emplace("API", "Express::Module::load");
-        auto basicMetrics = getBasicLoggingData();
-        metrics.insert(basicMetrics.begin(), basicMetrics.end());
-        logAsync(metrics);
-
-        return nullptr;
-    }
-    std::map<std::string, std::string> metrics;
-    metrics.emplace("Model_UUID", uuid);
-    metrics.emplace("Model_BizCode", bizCode);
-    metrics.emplace("Event", "AUTH_SUCCESS");
-    metrics.emplace("Backend", config && config->backend ? std::to_string(config->backend->type) : std::to_string(MNN_FORWARD_CPU));
-    metrics.emplace("Precision", config && config->backend && config->backend->config ? std::to_string(config->backend->config->precision) : std::to_string(BackendConfig::Precision_Normal));
-    metrics.emplace("API", "Express::Module::load");
-    auto basicMetrics = getBasicLoggingData();
-    metrics.insert(basicMetrics.begin(), basicMetrics.end());
-    logAsync(metrics);
-#endif // MNN_INTERNAL_ENABLED
-
+    Timer _time;
     std::shared_ptr<Module::Info> info(new Module::Info);
+    if (net->extraInfo() && net->extraInfo()->version()) {
+        info->version = net->extraInfo()->version()->str();
+    }
     auto rtMgr = _rtMgr;
     Module::Config defaultConfig;
     if (nullptr == config) {
@@ -307,14 +335,14 @@ static Module* loadInternal(const std::vector<std::string>& inputs, const std::v
         sche_config.backendConfig = config->backend->config;
         rtMgr.reset(Executor::RuntimeManager::createRuntimeManager(sche_config));
     }
+    info->inputNames = inputs;
+    info->outputNames = outputs;
     if ((!inputs.empty()) && (!outputs.empty())) {
         _loadInputs(info.get(), inputs, net);
         info->runTimeManager = rtMgr;
         std::shared_ptr<Module> m(PipelineModule::load(inputs, outputs, buffer, length, rtMgr, config));
-        return new NetModule(m, info);
+        return new NetModule(m, info, net, length, (float)_time.durationInUs() / 1000.0f);
     }
-    std::vector<std::string> newInputs = inputs;
-    std::vector<std::string> newOutputs = outputs;
     std::set<int> inputIdx, outputIdx, realInput, realOutput;
     for (int i=0; i< net->oplists()->size(); ++i) {
         auto op = net->oplists()->GetAs<Op>(i);
@@ -337,20 +365,20 @@ static Module* loadInternal(const std::vector<std::string>& inputs, const std::v
         }
     }
     std::set_difference(outputIdx.begin(), outputIdx.end(), inputIdx.begin(), inputIdx.end(), std::inserter(realOutput, realOutput.begin()));
-    if (newInputs.empty()) {
+    if (info->inputNames.empty()) {
         for (auto index : realInput) {
-            newInputs.emplace_back(net->tensorName()->GetAsString(index)->str());
+            info->inputNames.emplace_back(net->tensorName()->GetAsString(index)->str());
         }
     }
-    if (newOutputs.empty()) {
+    if (info->outputNames.empty()) {
         for (auto index : realOutput) {
-            newOutputs.emplace_back(net->tensorName()->GetAsString(index)->str());
+            info->outputNames.emplace_back(net->tensorName()->GetAsString(index)->str());
         }
     }
-    std::shared_ptr<Module> m(PipelineModule::load(newInputs, newOutputs, buffer, length, rtMgr, config));
-    _loadInputs(info.get(), newInputs, net);
+    std::shared_ptr<Module> m(PipelineModule::load(info->inputNames, info->outputNames, buffer, length, rtMgr, config));
+    _loadInputs(info.get(), info->inputNames, net);
     info->runTimeManager = rtMgr;
-    return new NetModule(m, info);
+    return new NetModule(m, info, net, length, (float)_time.durationInUs() / 1000.0f);
 }
 
 EXPRP Module::CloneContext::getOrClone(EXPRP expr) {

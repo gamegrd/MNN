@@ -5,55 +5,93 @@
 [MNN Homepage](http://www.mnn.zone)
 
 ## Intro
-MNN is a highly efficient and lightweight deep learning framework. It supports inference and training of deep learning models, and has industry leading performance for inference and training on-device. At present, MNN has been integrated in more than 20 apps of Alibaba Inc, such as Taobao, Tmall, Youku, Dingtalk, Xianyu and etc., covering more than 70 usage scenarios such as live broadcast, short video capture, search recommendation, product searching by image, interactive marketing, equity distribution, security risk control. In addition, MNN is also used on embedded devices, such as IoT.
+MNN is a highly efficient and lightweight deep learning framework. It supports inference and training of deep learning models, and has industry leading performance for inference and training on-device. At present, MNN has been integrated in more than 30 apps of Alibaba Inc, such as Taobao, Tmall, Youku, Dingtalk, Xianyu and etc., covering more than 70 usage scenarios such as live broadcast, short video capture, search recommendation, product searching by image, interactive marketing, equity distribution, security risk control. In addition, MNN is also used on embedded devices, such as IoT.
 
-The design principles and performance data of MNN has been published in an MLSys 2020 paper [here](https://arxiv.org/pdf/2002.12418.pdf). Please cite MNN in your publications if it helps your research:
+![architecture](doc/architecture.png)
 
-    @inproceedings{alibaba2020mnn,
-      author = {Jiang, Xiaotang and Wang, Huan and Chen, Yiliu and Wu, Ziqi and Wang, Lichuan and Zou, Bin and Yang, Yafeng and Cui, Zongyang and Cai, Yu and Yu, Tianhang and Lv, Chengfei and Wu, Zhihua},
-      title = {MNN: A Universal and Efficient Inference Engine},
-      booktitle = {MLSys},
-      year = {2020}
+Inside Alibaba, [MNN](https://mp.weixin.qq.com/s/5I1ISpx8lQqvCS8tGd6EJw) works as the basic module of the compute container in the [Walle](https://mp.weixin.qq.com/s/qpeCETty0BqqNJV9CMJafA) System, the first end-to-end, general-purpose, and large-scale production system for device-cloud collaborative machine learning, which has been published in the top system conference OSDI’22. The key design principles of MNN and the extensive benchmark testing results (vs. TensorFlow, TensorFlow Lite, PyTorch, PyTorch Mobile, TVM) can be found in the OSDI paper. The scripts and instructions for benchmark testing are put in the path “/benchmark”. If MNN or the design of Walle helps your research or production use, please cite our OSDI paper as follows:
+
+    @inproceedings {proc:osdi22:walle,
+        author = {Chengfei Lv and Chaoyue Niu and Renjie Gu and Xiaotang Jiang and Zhaode Wang and Bin Liu and Ziqi Wu and Qiulin Yao and Congyu Huang and Panos Huang and Tao Huang and Hui Shu and Jinde Song and Bin Zou and Peng Lan and Guohuan Xu and Fei Wu and Shaojie Tang and Fan Wu and Guihai Chen},
+        title = {Walle: An {End-to-End}, {General-Purpose}, and {Large-Scale} Production System for {Device-Cloud} Collaborative Machine Learning},
+        booktitle = {16th USENIX Symposium on Operating Systems Design and Implementation (OSDI 22)},
+        year = {2022},
+        isbn = {978-1-939133-28-1},
+        address = {Carlsbad, CA},
+        pages = {249--265},
+        url = {https://www.usenix.org/conference/osdi22/presentation/lv},
+        publisher = {USENIX Association},
+        month = jul,
     }
 
-## Documentation and Tools
-MNN's docs are in placed in [Yuque docs here](https://www.yuque.com/mnn/en).
+
+## Documentation and Workbench
+MNN's docs are in placed in [Yuque docs here](https://www.yuque.com/mnn/en) and [Read the docs](https://mnn-docs.readthedocs.io/en/latest).
 
 MNN Workbench could be downloaded from [MNN's homepage](http://www.mnn.zone), which provides pretrained models, visualized training tools, and one-click deployment of models to devices.
 
 ## Key Features
-### High performance
-- Implements core computing with lots of optimized assembly code to make full use of the ARM CPU.
-- For iOS, GPU acceleration (Metal) can be turned on, which is faster than Apple's native CoreML.
-- For Android, `OpenCL`, `Vulkan`, and `OpenGL` are available and deep tuned for mainstream GPUs (`Adreno` and `Mali`).
-- Convolution and transposition convolution algorithms are efficient and stable. The Winograd convolution algorithm is widely used to better symmetric convolutions such as 3x3 -> 7x7.
-- Twice speed increase for the new architecture ARM v8.2 with FP16 half-precision calculation support.
-
 ### Lightweight
 - Optimized for devices, no dependencies, can be easily deployed to mobile devices and a variety of embedded devices.
-- iOS platform: static library size for armv7+arm64 platforms is about 5MB, size increase of linked executables is about 620KB, and metallib file is about 600KB.
-- Android platform: core so size is about 400KB, OpenCL so is about 400KB, Vulkan so is about 400KB.
+- iOS platform: static library size will full option for armv7+arm64 platforms is about 12MB, size increase of linked executables is about 2M.
+- Android platform: core so size is about 800KB (armv7a - c++_shared).
+- Use MNN_BUILD_MINI can reduce package size about 25% , with limit of fix model input size
+- Support FP16 / Int8 qunatize, can reduce model size 50%-70%
 
 ### Versatility
-- Supports `Tensorflow`, `Caffe`, `ONNX`, and supports common neural networks such as `CNN`, `RNN`, `GAN`.
-- MNN model converter supports 149 `Tensorflow` OPs, 58 `TFLite` OPs, 47 `Caffe` OPs and 74 `ONNX` OPs; Number of OPs by different MNN hardware backends: 111 for CPU, 6 for ARM V8.2, 55 for Metal, 43 for OpenCL, and 32 for Vulkan.
+- Supports `Tensorflow`, `Caffe`, `ONNX`,`Torchscripts` and supports common neural networks such as `CNN`, `RNN`, `GAN`, `Transformork`.
+- Supports AI model with multi-inputs or multi-outputs, every kind of dimenstion format, dynamic inputs, controlflow.
+- MNN supports approximate full OPs used for AI Model. The converter supports 178 `Tensorflow` OPs, 52 `Caffe` OPs, 163 `Torchscripts` OPs, 158 `ONNX` OPs.
 - Supports iOS 8.0+, Android 4.3+ and embedded devices with POSIX interface.
 - Supports hybrid computing on multiple devices. Currently supports CPU and GPU.
 
+
+### High performance
+- Implements core computing with lots of optimized assembly code to make full use of the ARM / x64 CPU.
+- Use Metal / OpenCL / Vulkan to support GPU inference on mobile.
+- Use CUDA and tensorcore to support NVIDIA GPU for better performance
+- Convolution and transposition convolution algorithms are efficient and stable. The Winograd convolution algorithm is widely used to better symmetric convolutions such as 3x3,4x4,5x5,6x6,7x7.
+- Twice speed increase for the new architecture ARM v8.2 with FP16 half-precision calculation support. 2.5 faster to use sdot for ARM v8.2 and VNNI.
+
 ### Ease of use
-- Efficient image processing module, speeding up affine transform and color space transform without libyuv or opencv.
-- Provides callbacks throughout the workflow to extract data or control the execution precisely.
-- Provides options for selecting inference branch and paralleling branches on CPU and GPU.
-- (BETA) MNN Python API helps ML engineers to easily use MNN to build a model, train it and quantize it, without dipping their toes in C++ code.
+- Support use MNN's OP to do numerical calculating like numpy.
+- Support lightweight image process module like OpenCV, which is only 100k.
+- Support build model and train it on PC / mobile.
+- MNN Python API helps ML engineers to easily use MNN to inference, train, process image, without dipping their toes in C++ code.
 
-## Architecture
-![architecture](doc/architecture.png)
+The Architecture / Precision MNN supported is shown below:
 
-MNN can be divided into two parts: Converter and Interpreter.
+- S ：Support and work well, deeply optimized, recommend to use
+- A ：Support and work well, can use
+- B ：Support but has bug or not optimized, no recommend to use
+- C ：Not Support
 
-Converter consists of Frontends and Graph Optimize. The former is responsible for supporting different training frameworks. MNN currently supports Tensorflow, Tensorflow Lite, Caffe and ONNX (PyTorch/MXNet); the latter optimizes graphs by operator fusion, operator substitution, and layout adjustment.
+| Architecture / Precision |  | Normal | FP16 | BF16 | Int8 |
+| --- | --- | --- | --- | --- | --- |
+| CPU | Native | B | C | B | B |
+|  | x86/x64-SSE4.1 | A | B | B | A |
+|  | x86/x64-AVX2 | S | B | B | A |
+|  | x86/x64-AVX512 | S | B | B | S |
+|  | ARMv7a | S | S (ARMv8.2) | S | S |
+|  | ARMv8 | S | S (ARMv8.2) | S | S |
+| GPU | OpenCL | A | S | C | C |
+|  | Vulkan | A | A | C | C |
+|  | Metal | A | S | C | C |
+|  | CUDA | A | S | C | C |
+| NPU | CoreML | B | C | C | C |
+|  | HIAI | B | C | C | B |
 
-Interpreter consists of Engine and Backends. The former is responsible for the loading of the model and the scheduling of the calculation graph; the latter includes the memory allocation and the Op implementation under each computing device. In Engine and Backends, MNN applies a variety of optimization schemes, including applying Winograd algorithm in convolution and deconvolution, applying Strassen algorithm in matrix multiplication, low-precision calculation, Neon optimization, hand-written assembly, multi-thread optimization, memory reuse, heterogeneous computing, etc.
+
+
+## Tools
+
+Base on MNN (Tensor compute engine), we provided a series of tools for inference, train and general computation.
+
+- MNN-Converter: Convert other model to MNN model for inference, such as Tensorflow(lite), Caffe, ONNX, Torchscripts. And do graph optimization to reduce computation.
+- MNN-Compress: Compress model to reduce size and increase performance / speed
+- MNN-Express: Support model with controlflow, use MNN's OP to do general-purpose compute.
+- MNN-CV: An OpenCV liked library, but based on MNN and then much more lightweight.
+- MNN-Train: Support train MNN model.
 
 ## How to Discuss and Get Help From MNN Community
 
@@ -65,7 +103,20 @@ Group #1 (Full): 23329087
 
 Group #2 (Full): 23350225
 
-Group #3: https://h5.dingtalk.com/circle/healthCheckin.html?dtaction=os&corpId=ding2c1d5c85a81030b9a483726330e8af54&574b2bb2-c53a-4=497bad6b-25a5-4&cbdbhh=qwertyuiop
+Group #3: https://h5.dingtalk.com/circle/healthCheckin.html?dtaction=os&corpId=ding8989a1d6ae6ef130b177420cc0e366ea&f0c81=1b93a&cbdbhh=qwertyuiop
+
+## Historical Paper
+
+The preliminary version of MNN, as mobile inference engine and with the focus on manual optimization, has also been published in MLSys 2020. Please cite the paper, if MNN previously helped your research:
+
+
+    @inproceedings{alibaba2020mnn,
+      author = {Jiang, Xiaotang and Wang, Huan and Chen, Yiliu and Wu, Ziqi and Wang, Lichuan and Zou, Bin and Yang, Yafeng and Cui, Zongyang and Cai, Yu and Yu, Tianhang and Lv, Chengfei and Wu, Zhihua},
+      title = {MNN: A Universal and Efficient Inference Engine},
+      booktitle = {MLSys},
+      year = {2020}
+    }
+
 
 ## License
 Apache 2.0
@@ -93,3 +144,4 @@ MNN refers to the following projects:
 - [bolt](https://github.com/huawei-noah/bolt)
 - [libyuv](https://chromium.googlesource.com/libyuv/libyuv)
 - [libjpeg](https://github.com/libjpeg-turbo/libjpeg-turbo)
+- [opencv](https://github.com/opencv/opencv)

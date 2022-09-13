@@ -220,12 +220,14 @@ Backend::MemObj* CPUBackend::allocBuffer(int size, Tensor* dest, StorageType sto
     if (nullptr != originMem) {
         if (static_cast<CPUMemObj*>(originMem)->getSize() >= size) {
             return originMem;
+        } else {
+            TensorUtils::getDescribe(dest)->mem.reset(nullptr);
         }
     }
     // MNN_PRINT("Acquire size = %d\n", size);
     if (size <= 0) {
         MNN_PRINT("Acquire buffer size = %d\n", size);
-//        MNN_ASSERT(false);
+       // MNN_ASSERT(false);
         return nullptr;
     }
     // if (size > LARGE_MEMORY) {
@@ -559,10 +561,8 @@ void registerCPURuntimeCreator() {
 #ifdef MNN_SUPPORT_BF16
     registerBF16Backend();
 #endif
-#if defined(__ANDROID__) || defined(__aarch64__)
-#ifdef ENABLE_ARMV82
+#ifdef MNN_USE_ARMV82
     registerArm82RuntimeCreator();
-#endif
 #endif
     // TODO: Merge _initCoreFunction MNNFunctionInit and cpuinfo_arm_init
     MNNCoreFunctionInit();

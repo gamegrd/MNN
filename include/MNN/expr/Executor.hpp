@@ -42,6 +42,7 @@ public:
     ErrorCode computeInfo(Expr* expr);
     void makeCache(const std::vector<EXPRP>& expr, bool forceCPU = false);
     ErrorCode runCache(std::shared_ptr<ComputeCache> cache);
+    bool lazyEval = true;
     /**Internal Usage End*/
 
     void setGlobalExecutorConfig(MNNForwardType type, const BackendConfig& config, int numberThread);
@@ -69,20 +70,24 @@ public:
     const DebugTools* getDebugTools() const {
         return mDebug.get();
     }
-    struct Cache;
     class MNN_PUBLIC RuntimeManager {
     public:
         ~RuntimeManager();
         /**
-         * @param configs: schedule configs.
-         * @param cacheName: full path for cache file. Note: should choose location for reading and writing.
+         * @param configs : schedule configs.
+         * @param cacheName : full path for cache file. Note: should choose location for reading and writing.
          */
         static RuntimeManager* createRuntimeManager(const ScheduleConfig& config);
+        
+        /**
+         * @param rtmgr : the rtmgr to destroy
+         */
+        static void destroy(RuntimeManager* rtmgr);
 
         /**
          * Deceperate, the same as createRuntimeManager(configs[0])
-         * @param configs: schedule configs.
-         * @param cacheName: full path for cache file. Note: should choose location for reading and writing.
+         * @param configs : schedule configs.
+         * @param cacheName : full path for cache file. Note: should choose location for reading and writing.
          */
         static RuntimeManager* createRuntimeManager(std::vector<ScheduleConfig>& configs);
 
@@ -100,22 +105,18 @@ public:
          */
         void updateCache();
         std::vector<bool> isBackendSupport(const std::vector<MNNForwardType> type);
-        RuntimeInfo getRuntimeInfo() {
-            return mRuntime;
-        }
         friend class Executor;
         void setMode(Interpreter::SessionMode mode);
         void setHint(Interpreter::HintMode mode, int value);
         bool getInfo(Interpreter::SessionInfoCode code, void* ptr);
+        BackendConfig* getBnConfig();
         const RuntimeAttr* getInside() const {
             return mInside;
         }
     private:
-        RuntimeManager();
-        RuntimeInfo mRuntime;
-        std::shared_ptr<Runtime> mInfo;
-        std::shared_ptr<Cache> mCache;
         RuntimeAttr* mInside;
+        friend class StaticModule;
+        RuntimeManager();
     };
 private:
     void _makeCache(const std::vector<EXPRP>& outputs, bool forceCPU);

@@ -11,6 +11,8 @@
 #endif
 #include "common.h"
 
+#define PARSE(obj, default, func) ((obj) == nullptr ? (default) : func(obj))
+
 using namespace std;
 typedef vector<int> INTS;
 #define PyMNN_ERROR_LOG(x) PyErr_SetString(PyExc_TypeError, x);
@@ -345,7 +347,10 @@ template <typename K, PyObject*(*FuncK)(K)=toPyObj,
 static PyObject* toPyObj(map<K, V> values) {
     PyObject* obj = PyDict_New();
     for (auto iter = values.begin(); iter != values.end(); iter++) {
-        PyDict_SetItem(obj, FuncK(iter->first), FuncV(iter->second));
+        auto key = FuncK(iter->first), val = FuncV(iter->second);
+        PyDict_SetItem(obj, key, val);
+        Py_XDECREF(key);
+        Py_XDECREF(val);
     }
     return obj;
 }
@@ -363,13 +368,28 @@ static inline bool isInt(PyObject* obj) {
 static inline bool isFloat(PyObject* obj) {
     return PyFloat_Check(obj);
 }
+static inline bool isNone(PyObject* obj) {
+    return (obj == Py_None);
+}
+static inline bool isPySequence(PyObject* obj) {
+    // ndarray in PySequence_Check is true;
+    // when PYMNN_NUMPY_USABLE is close will get some wrong judge
+    // use isPySequence replace PySequence_Check
+    return PyTuple_Check(obj) || PyList_Check(obj) || PyBytes_Check(obj);
+}
+static inline int PySequenceSize(PyObject* obj) {
+    if (PyTuple_Check(obj)) return PyTuple_Size(obj);
+    if (PyList_Check(obj)) return PyList_Size(obj);
+    if (PyBytes_Check(obj)) return PyBytes_Size(obj);
+    return 0;
+}
 static inline bool isVals(PyObject* obj) {
     return
 #ifdef PYMNN_NUMPY_USABLE
     PyArray_Check(obj) ||
 #endif
     PyCapsule_CheckExact(obj) ||
-    PySequence_Check(obj);
+    isPySequence(obj);
 }
 template <bool (*Func)(PyObject*)>
 static bool isVec(PyObject* obj) {
@@ -796,6 +816,7 @@ static PyObject* toPyEnum(PyObject* type, int val) {
     auto args = PyTuple_New(1);
     PyTuple_SetItem((PyObject*)args, 0, PyLong_FromLong((long)val));
     auto e = PyObject_Call(type, args, NULL);
+    Py_XDECREF(args);
     if (!e) {
         PyErr_SetString(PyExc_Exception,
                         "toEnum: PyMNNEnum instance create failed");
@@ -811,9 +832,11 @@ static T toEnum(PyObject* e) {
     return static_cast<T>(((PyMNNEnum*)e)->value);
 }
 #define declare_map_item(_, key, value)  { static_cast<int>(key), value },
-#define register_item(context, key, value) \
-    PyObject_SetAttrString(scope, value, toPyObj(key)); \
-    PyDict_SetItemString(dict, value, toPyObj(key));
+#define register_item(context, key, value) { \
+    auto pykey = toPyObj(key); \
+    PyObject_SetAttrString(scope, value, pykey); \
+    PyDict_SetItemString(dict, value, pykey); \
+    Py_XDECREF(pykey); }
 
 #define def_enum_repr(NAME, ...) \
 static PyObject* PyEnum_##NAME##_repr(PyObject *self) { \
@@ -932,11 +955,11 @@ static PyObject* PyMNN##SCOPE##_##NAME(PyObject *self, PyObject *args) { \
 #define declare_reduce(SCOPE, NAME, FUNC) \
 static PyObject* PyMNN##SCOPE##_##NAME(PyObject *self, PyObject *args) { \
     INTS default_shape = {}; \
-    PyObject *x, *axis = toPyObj(default_shape); \
+    PyObject *x, *axis = nullptr; \
     int keep_dims = 0; \
     if (PyArg_ParseTuple(args, "O|Oi", &x, &axis, &keep_dims) \
-        && isVar(x) && isInts(axis)) { \
-        return toPyObj(FUNC(toVar(x), toInts(axis), keep_dims)); \
+        && isVar(x) && (axis == nullptr || isInts(axis))) { \
+        return toPyObj(FUNC(toVar(x), PARSE(axis, default_shape, toInts), keep_dims)); \
     } \
     PyMNN_ERROR(#NAME " require args: (Var, |[int], bool)"); \
 }
@@ -961,10 +984,10 @@ static PyObject* PyMNN##SCOPE##_##NAME(PyObject *self, PyObject *args) { \
 #define declare_axiss_op(SCOPE, NAME, FUNC) \
 static PyObject* PyMNN##SCOPE##_##NAME(PyObject *self, PyObject *args) { \
     INTS default_axis = {}; \
-    PyObject *x, *axis = toPyObj(default_axis); \
+    PyObject *x, *axis = nullptr; \
     if (PyArg_ParseTuple(args, "O|O", &x, &axis) \
-        && isVar(x) && isInts(axis)) { \
-        return toPyObj(FUNC(toVar(x), toInts(axis))); \
+        && isVar(x) && (axis == nullptr || isInts(axis))) { \
+        return toPyObj(FUNC(toVar(x), PARSE(axis, default_axis, toInts))); \
     } \
     PyMNN_ERROR(#NAME " require args: (Var, |[int])"); \
 }
@@ -1029,6 +1052,8 @@ static PyMethodDef PyMNN##NAME##_methods[] = { \
 };
 #define def_class_end(NAME, TYPE) \
 static PyObject* PyMNN##NAME##_new(PyTypeObject *type, PyObject *args, PyObject *kwds); \
+static int PyMNN##NAME##_init(PyTypeObject *self, PyObject *args, PyObject *kwds); \
+static PyObject* PyMNN##NAME##_call(PyObject *self, PyObject *args, PyObject *kwds); \
 static void PyMNN##NAME##_dealloc(PyMNN##NAME *self) { \
     if (self->ptr) { \
         delete self->ptr; \
@@ -1050,7 +1075,7 @@ static PyTypeObject PyMNN##NAME##Type = { \
     0,                                        /*tp_as_sequence*/\
     0,                                        /*tp_as_mapping*/\
     0,                                        /*tp_hash*/\
-    0,                                        /*tp_call*/\
+    PyMNN##NAME##_call,                       /*tp_call*/\
     0,                                        /*tp_str*/\
     0,                                        /*tp_getattro*/\
     0,                                        /*tp_setattro*/\
@@ -1071,13 +1096,13 @@ static PyTypeObject PyMNN##NAME##Type = { \
     0,                                        /*tp_descr_get*/\
     0,                                        /*tp_descr_set*/\
     0,                                        /*tp_dictoffset*/\
-    0,                                        /*tp_init*/\
+    (initproc)PyMNN##NAME##_init,             /*tp_init*/\
     0,                                        /*tp_alloc*/\
     PyMNN##NAME##_new                         /*tp_new*/\
 };\
 def_class_register(NAME) \
 static PyMNN##NAME* get##NAME() { \
-    return (PyMNN##NAME *)PyObject_Call((PyObject*)PyType_FindTLSType(&PyMNN##NAME##Type), PyTuple_New(0), NULL); \
+    return (PyMNN##NAME *)PyObject_CallObject((PyObject*)PyType_FindTLSType(&PyMNN##NAME##Type), NULL); \
 } \
 static PyObject* toPyObj(TYPE* x) { \
     auto ret = get##NAME(); \
@@ -1099,6 +1124,14 @@ static PyObject* PyMNN##NAME##_new(PyTypeObject *type, PyObject *args, PyObject 
     PyMNN##NAME *self = (PyMNN##NAME *)type->tp_alloc(type, 0); \
     return (PyObject*)self; \
 }
+#define class_basic_init_impl(NAME) \
+static int PyMNN##NAME##_init(PyTypeObject *self, PyObject *args, PyObject *kwds) { \
+    return 0; \
+}
+#define class_basic_call_impl(NAME) \
+static PyObject* PyMNN##NAME##_call(PyObject *self, PyObject *args, PyObject *kwds) { \
+    return (PyObject*)self; \
+}
 // ------------------------ class start ------------------------
 // ------------------------ capsule start ------------------------
 
@@ -1110,7 +1143,11 @@ typedef struct { \
 } PyMNN##NAME;
 #define def_class_smart_end(NAME, TYPE) \
 static PyObject* PyMNN##NAME##_new(PyTypeObject *type, PyObject *args, PyObject *kwds); \
+static PyObject* PyMNN##NAME##_call(PyObject *self, PyObject *args, PyObject *kwds); \
 static void PyMNN##NAME##_dealloc(PyMNN##NAME *self) { \
+    if (self->ptr) { \
+        delete self->ptr; \
+    } \
     Py_TYPE(self)->tp_free((PyObject *) self); \
 } \
 static PyTypeObject PyMNN##NAME##Type = { \
@@ -1128,7 +1165,7 @@ static PyTypeObject PyMNN##NAME##Type = { \
     0,                                        /*tp_as_sequence*/\
     0,                                        /*tp_as_mapping*/\
     0,                                        /*tp_hash*/\
-    0,                                        /*tp_call*/\
+    PyMNN##NAME##_call,                       /*tp_call*/\
     0,                                        /*tp_str*/\
     0,                                        /*tp_getattro*/\
     0,                                        /*tp_setattro*/\
@@ -1155,7 +1192,7 @@ static PyTypeObject PyMNN##NAME##Type = { \
 };\
 def_class_register(NAME) \
 static PyMNN##NAME* get##NAME() { \
-    return (PyMNN##NAME *)PyObject_Call((PyObject*)PyType_FindTLSType(&PyMNN##NAME##Type), PyTuple_New(0), NULL); \
+    return (PyMNN##NAME *)PyObject_CallObject((PyObject*)PyType_FindTLSType(&PyMNN##NAME##Type), NULL); \
 } \
 static PyObject* toPyObj(TYPE* x) { \
     auto ret = get##NAME(); \

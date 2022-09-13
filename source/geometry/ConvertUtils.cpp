@@ -75,7 +75,7 @@ bool ConvertUtils::compute(Tensor* input, Tensor* output, CommandBuffer& res) {
 void ConvertUtils::broadcastto(Tensor* input, Tensor* output, bool forward) {
     auto outputDes        = TensorUtils::getDescribe(output);
     outputDes->memoryType = Tensor::InsideDescribe::MEMORY_VIRTUAL;
-    if (input->elementSize() == output->elementSize()) {
+    if (TensorUtils::getRawSize(input) == TensorUtils::getRawSize(output)) {
         // Just Copy Tensor
         outputDes->regions = {TensorUtils::makeFullSlice(input)};
         return;
@@ -154,6 +154,7 @@ void ConvertUtils::broadcastto(Tensor* input, Tensor* output, bool forward) {
     int remainDimSize = sepInputShapeSize > 3 ? (int)sepInputShapeSize - 3 : 0;
     int remainStride[MNN_MAX_TENSOR_DIM];
     int remainSize = OpCommonUtils::computeStride(remainStride, sepOutputShape, remainDimSize);
+    outputDes->regions.clear();
     outputDes->regions.resize(remainSize);
     int cords[MNN_MAX_TENSOR_DIM];
     for (int index = 0; index < remainSize; ++index) {

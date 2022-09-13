@@ -175,14 +175,16 @@ StaticModule::StaticModule(const void* buffer, size_t length, const std::vector<
         sche_config.backendConfig = moduleconfig.backend->config;
         rtMgr.reset(Executor::RuntimeManager::createRuntimeManager(sche_config));
     }
+    const BackendConfig* userConfig = nullptr;
     if (nullptr == rtMgr) {
         rt = Executor::getRuntime();
     } else {
         mResource->mModes = rtMgr->getInside()->modes;
-        rt = rtMgr->getRuntimeInfo();
+        rt = rtMgr->getInside()->mRuntime;
+        userConfig = &rtMgr->getInside()->mConfig;
     }
     if (moduleconfig.rearrange) {
-        mResourceBackend.reset(rt.first.begin()->second->onCreate());
+        mResourceBackend.reset(rt.first.begin()->second->onCreate(userConfig));
         if (mResourceBackend->type() == MNN_FORWARD_CPU) {
             mBackupResourceBackend = mResourceBackend;
         } else {
@@ -236,6 +238,7 @@ StaticModule::StaticModule(const void* buffer, size_t length, const std::vector<
     mResource->mConfig.path.outputs = outputs;
     mResource->mConfig.saveTensors = outputs;
     mResource->mConfig.path.inputs = inputs;
+    mResource->mConfig.backendConfig = (BackendConfig*)userConfig;
     Schedule::ScheduleInfo scheduleInfo;
     // Copy Const
     if (nullptr != mResource->mSharedConst) {
@@ -297,12 +300,7 @@ std::vector<Express::VARP> StaticModule::onForward(const std::vector<Express::VA
             if (nullptr == mInputTensors[i]) {
                 continue;
             }
-            auto exprInfo    = inputs[i]->expr();
-            auto inside      = exprInfo.first->inside();
-            auto inputTensor = inside->mOutputTensors[exprInfo.second];
-            if (nullptr != inside->mCache) {
-                inputTensor = Executor::getOutput(inside->mCache.get(), inside->mCacheOffset);
-            }
+            auto inputTensor = Utils::getTensor(inputs[i]);
             auto srcDes = TensorUtils::getDescribe(inputTensor);
             auto des = TensorUtils::getDescribe(mInputTensors[i]);
             des->quantAttr = srcDes->quantAttr;
@@ -374,6 +372,12 @@ std::vector<Express::VARP> StaticModule::onForward(const std::vector<Express::VA
         auto tensor = Tensor::clone(mOutputTensors[i]);
         outputs[mResource->mOutputFromTensor[i]] = Express::Variable::create(Express::Expr::create(tensor, true));
     }
+#ifdef MNN_INTERNAL_ENABLED
+    auto glo = ExecutorScope::Current();
+    float flops = 0.0f;
+    mSession->getInfo(Interpreter::FLOPS, &flops);
+    glo->getDebugTools()->flops += flops;
+#endif
     return outputs;
 }
 
