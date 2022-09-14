@@ -11,7 +11,7 @@
 			// "CMAKE_INSTALL_PREFIX": "${env:VCPKG_ROOT}\\installed\\x64-windows-static\\include",
 			"CMAKE_TOOLCHAIN_FILE": "${env:VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake",
 			//	cd build && cmake -G"NMake Makefiles" 
-			"VCPKG_TARGET_TRIPLET": "x64-windows-static",
+			// "VCPKG_TARGET_TRIPLET": "x64-windows-static",
 			"VCPKG_CRT_LINKAGE": "static",
 			"VCPKG_LIBRARY_LINKAGE": "static",
 			"VCPKG_TARGET_ARCHITECTURE": "x64",
