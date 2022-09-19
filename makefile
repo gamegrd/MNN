@@ -5,7 +5,7 @@ init:
 	./tools/script/get_model.sh
 
 linux:
-	mkdir build/linux && cd build/linux && cmake ../../ && make -j4
+	mkdir -p build/linux && cd build/linux && cmake -DMNN_BUILD_CONVERTER=ON ../../ && make -j4
 
 armv8:
 	mkdir -p build/arm/v8
