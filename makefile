@@ -19,13 +19,20 @@ armv8:
 
 ios:
 	mkdir -p build/ios && cd build/ios && \
-	cmake -DMNN_BUILD_CONVERTER=ON ../../ \
+	cmake -DMNN_BUILD_CONVERTER=OFF ../../ \
 	-DPLATFORM=OS64 \
 	-DMNN_METAL=ON \
 	-DARCHS="arm64" \
 	-DENABLE_BITCODE=0 \
 	-DMNN_AAPL_FMWK=1 \
 	-DMNN_SEP_BUILD=0 \
+	-DMNN_BUILD_TEST=OFF \
+	-DMNN_BUILD_T=OFF \
+	-DMNN_BUILD_BENCHMARK=OFF \
+	-DMNN_PORTABLE_BUILD=ON \
+	-DMNN_BUILD_SHARED_LIBS=OFF \
+	-DMNN_BUILD_QUANTOOLS=OFF \
 	-DMNN_ARM82=true \
 	-DCMAKE_TOOLCHAIN_FILE=/opt/ios-cmake/ios.toolchain.cmake && \
-	cmake --build . --config Release
+	make -j8
+#	cmake --build . --config Release
