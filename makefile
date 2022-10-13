@@ -21,7 +21,7 @@ ios:
 	mkdir -p build/ios && cd build/ios && \
 	cmake -DMNN_BUILD_CONVERTER=OFF ../../ \
 	-DPLATFORM=OS64 \
-	-DMNN_METAL=ON \
+	-DMNN_METAL=OFF \
 	-DARCHS="arm64" \
 	-DENABLE_BITCODE=0 \
 	-DMNN_AAPL_FMWK=0 \
